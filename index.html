@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clean Bangladesh - Report & Cleanup Trash (Supabase)</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Leaflet.js for mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Leaflet Marker Cluster for grouping markers -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Supabase Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-100">
+
+    <!-- Main Map Container -->
+    <div id="map"></div>
+
+    <!-- Header / Top UI Elements -->
+    <header class="absolute top-0 left-0 right-0 z-20 p-4 flex justify-between items-start gap-4 pointer-events-none">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pointer-events-auto">
+            <div class="bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg min-w-[160px]">
+                <h3 class="text-sm font-semibold text-gray-500">Total Locations</h3>
+                <p id="total-locations" class="text-2xl font-bold text-gray-800">0</p>
+            </div>
+            <div class="bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg min-w-[160px]">
+                <h3 class="text-sm font-semibold text-gray-500">Added This Month</h3>
+                <p id="month-locations" class="text-2xl font-bold text-gray-800">0</p>
+            </div>
+            <div class="bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg min-w-[160px]">
+                <h3 class="text-sm font-semibold text-gray-500">Locations Cleaned</h3>
+                <p id="cleaned-locations" class="text-2xl font-bold text-gray-800">0</p>
+            </div>
+        </div>
+        <div class="flex flex-col sm:flex-row items-end sm:items-center gap-3 pointer-events-auto">
+             <button id="settings-btn" class="bg-gray-600 text-white font-bold py-3 px-6 rounded-lg shadow-xl hover:bg-gray-700 transition-transform transform hover:scale-105">
+                ⚙️ Settings
+            </button>
+             <button id="add-location-btn" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-xl hover:bg-blue-700 transition-transform transform hover:scale-105">
+                Add Trash Location
+            </button>
+            <div id="user-actions" class="flex items-center gap-3"></div>
+        </div>
+    </header>
+
+    <!-- Manual Location Confirmation Bar -->
+    <div id="confirm-location-bar" class="hidden absolute bottom-0 left-0 right-0 z-20 p-4 flex justify-center items-center gap-4 pointer-events-none">
+        <button id="cancel-selection-btn" class="bg-gray-500 text-white font-bold py-3 px-6 rounded-lg shadow-2xl pointer-events-auto hover:bg-gray-600 transition">Cancel</button>
+        <button id="confirm-location-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg shadow-2xl pointer-events-auto hover:bg-green-700 transition-transform transform hover:scale-105">Use This Location</button>
+    </div>
+    
+    <!-- Modals -->
+    <div id="login-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md text-center">
+            <h2 id="auth-modal-title" class="text-2xl font-bold mb-2">Welcome!</h2>
+            <p class="text-gray-600 mb-6" id="login-prompt-message">Please sign in to continue.</p>
+
+            <!-- Sign In Form -->
+            <form id="login-form">
+                <input id="login-email" type="email" placeholder="Email Address" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500" required>
+                <input id="login-password" type="password" placeholder="Password" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500" required>
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Sign In</button>
+            </form>
+
+            <!-- Sign Up Form (hidden by default) -->
+            <form id="signup-form" class="hidden">
+                <input id="signup-email" type="email" placeholder="Email Address" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500" required>
+                <input id="signup-password" type="password" placeholder="Create a Password" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500" required>
+                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Sign Up</button>
+            </form>
+
+            <p id="auth-error" class="text-red-500 text-sm mt-4 min-h-[20px]"></p>
+            
+            <div id="or-divider" class="my-4 text-gray-500">OR</div>
+
+            <button id="google-signin-btn" class="w-full bg-white border border-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-sm hover:bg-gray-50 transition flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24s8.955 20 20 20s20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"></path><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"></path><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"></path><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C44.438 36.333 48 31 48 24c0-1.341-.138-2.65-.389-3.917z"></path></svg>
+                Sign In with Google
+            </button>
+            <p id="auth-toggle-text" class="mt-6 text-sm">Don't have an account? <a href="#" id="show-signup" class="text-blue-600 font-semibold">Sign Up</a></p>
+        </div>
+    </div>
+    
+    <div id="add-location-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
+            <div>
+                <h2 class="text-2xl font-bold mb-4">Add a New Trash Location</h2>
+                <div id="step-1-location">
+                    <p class="text-gray-600 mb-4">Choose how to set the location:</p>
+                    <div class="flex gap-4 mb-4">
+                         <button id="auto-location-btn" class="flex-1 bg-blue-100 text-blue-800 font-semibold py-3 px-4 rounded-lg hover:bg-blue-200 transition">Use My Current Location</button>
+                         <button id="manual-location-btn" class="flex-1 bg-gray-100 text-gray-800 font-semibold py-3 px-4 rounded-lg hover:bg-gray-200 transition">Select on Map</button>
+                    </div>
+                    <div id="location-feedback" class="text-center text-sm text-gray-500 min-h-[20px]"></div>
+                </div>
+                <div id="step-2-image" class="hidden">
+                    <p class="text-gray-600 mb-4">Please upload an image of the location.</p>
+                     <input type="file" id="image-upload-input" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                     <img id="image-preview" src="" class="hidden mt-4 rounded-lg w-full h-48 object-cover"/>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-between items-center">
+                 <button id="cancel-add-location" class="text-gray-600 hover:text-gray-900">Cancel</button>
+                 <div class="flex gap-4 items-center">
+                    <button id="next-step-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition hidden">Next</button>
+                    <button id="submit-location-btn" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-green-700 transition hidden">Submit</button>
+                    <div id="loading-spinner" class="loader hidden"></div>
+                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="message-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md text-center">
+            <h2 id="message-title" class="text-2xl font-bold mb-2"></h2>
+            <p id="message-body" class="text-gray-600 mb-6"></p>
+            <button id="close-message-modal" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">OK</button>
+        </div>
+    </div>
+
+    <!-- Add this right after the message-modal div -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
+            <!-- Settings Header -->
+            <div class="border-b border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-2xl font-bold flex items-center gap-2">
+                        <span>⚙️ Settings</span>
+                    </h2>
+                    <button id="close-settings" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Settings Content -->
+            <div class="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+                <!-- Profile Section -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <span>👤 Profile</span>
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Display Name</label>
+                            <input type="text" id="display-name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Email</label>
+                            <input type="email" id="profile-email" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" disabled>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Leaderboard Section -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <span>🏆 Leaderboard</span>
+                    </h3>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div id="leaderboard-list" class="space-y-2">
+                            <!-- Leaderboard items will be populated here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Language Options -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <span>🌐 Language</span>
+                    </h3>
+                    <select id="language-select" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="en">English</option>
+                        <option value="bn">বাংলা (Bengali)</option>
+                        <option value="hi">हिंदी (Hindi)</option>
+                    </select>
+                </div>
+
+                <!--  Access -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <span>🔐 Admin Access</span>
+                    </h3>
+                    <button id="admin-access-btn" class="w-full bg-gray-100 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-200 transition">
+                        Go to Admin Panel
+                    </button>
+                </div>
+
+                <!-- Authentication -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <span>🔑 Authentication</span>
+                    </h3>
+                    <div id="auth-buttons">
+                        <!-- Login/Logout buttons will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Footer -->
+            <div class="border-t border-gray-200 p-6">
+                <div class="flex justify-end gap-4">
+                    <button id="save-settings" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal End -->
+
+    <!-- Admin Login Modal -->
+    <div id="admin-login-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4">Admin Login</h2>
+            <form id="admin-login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Admin Email</label>
+                    <input type="email" id="admin-email" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Admin Password</label>
+                    <input type="password" id="admin-password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required>
+                </div>
+                <p id="admin-login-error" class="text-red-500 text-sm"></p>
+                <div class="flex justify-end gap-4">
+                    <button type="button" id="cancel-admin-login" class="text-gray-600 hover:text-gray-900">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="admin-panel-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[90vh]">
+            <div class="border-b border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-2xl font-bold">Admin Panel</h2>
+                    <button id="close-admin-panel" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Admin Panel Content -->
+            <div class="p-6 h-[calc(90vh-80px)] overflow-hidden">
+                <!-- Tab Navigation -->
+                <div class="border-b border-gray-200 mb-6">
+                    <nav class="flex space-x-4" aria-label="Tabs">
+                        <button id="tab-dashboard" class="px-4 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600">Dashboard</button>
+                        <button id="tab-pending" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">Pending Requests</button>
+                        <button id="tab-all" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">All Submissions</button>
+                    </nav>
+                </div>
+
+                <!-- Tab Contents -->
+                <div class="h-[calc(90vh-180px)] overflow-y-auto">
+                    <!-- Dashboard Tab -->
+                    <div id="content-dashboard" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-blue-50 p-4 rounded-lg">
+                                <h4 class="text-sm font-medium text-blue-600">Total Submissions</h4>
+                                <p id="admin-total-submissions" class="text-2xl font-bold text-blue-800">0</p>
+                            </div>
+                            <div class="bg-yellow-50 p-4 rounded-lg">
+                                <h4 class="text-sm font-medium text-yellow-600">Pending Review</h4>
+                                <p id="admin-pending-count" class="text-2xl font-bold text-yellow-800">0</p>
+                            </div>
+                            <div class="bg-green-50 p-4 rounded-lg">
+                                <h4 class="text-sm font-medium text-green-600">Approved Today</h4>
+                                <p id="admin-approved-today" class="text-2xl font-bold text-green-800">0</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <h3 class="text-lg font-semibold mb-4">Recent Activity</h3>
+                            <div id="recent-activity" class="space-y-2">
+                                <!-- Recent activity will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pending Requests Tab -->
+                    <div id="content-pending" class="hidden space-y-4">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold">Pending Submissions</h3>
+                            <div class="flex gap-2">
+                                <button id="approve-all-btn" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">
+                                    Approve All
+                                </button>
+                                <button id="reject-all-btn" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">
+                                    Reject All
+                                </button>
+                            </div>
+                        </div>
+                        <div id="pending-submissions" class="space-y-4">
+                            <!-- Pending submissions will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- All Submissions Tab -->
+                    <div id="content-all" class="hidden">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold">All Submissions</h3>
+                            <div class="flex gap-2">
+                                <select id="status-filter" class="rounded-lg border-gray-300">
+                                    <option value="all">All Status</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="rejected">Rejected</option>
+                                    <option value="cleaned">Cleaned</option>
+                                </select>
+                                <input type="text" id="search-submissions" placeholder="Search..." 
+                                    class="rounded-lg border-gray-300">
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitter</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="all-submissions" class="bg-white divide-y divide-gray-200">
+                                    <!-- All submissions will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Logic -->
+    <script src="script.js"></script>
+</body>
+</html>
