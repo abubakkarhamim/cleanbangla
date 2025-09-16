@@ -1,3 +1,3 @@
 # cleanbangla
 
-abuakkarhamim.github.io/cleanbangla
+https://abuakkarhamim.github.io/cleanbangla
